@@ -69,3 +69,61 @@ class Loan(SQLModel, table=True):
     def return_book(self):
         self.returned = True
         self.check_overdue()
+
+# Example data dictionaries
+user_data = {
+    "id":1,
+    "first_name": "John",
+    "last_name": "Doe",
+    "email": "john.doe@example.com",
+    "password": "securepassword",
+    "role": "Member"
+}
+
+book_data = {
+    "id":1,
+    "title": "A Great Book",
+    "genre": "Fiction",
+    "pages": 300,
+    "total_copies": 5,
+    "copies_available": 5
+}
+
+author_data = {
+    "pen_name": "Jane Smith",
+    "email": "jane.smith@example.com"
+}
+
+loan_data = {
+    "borrower_id": 1,  # Assuming an existing user with id 1
+    "borrowed_book_id": 1,  # Assuming an existing book with id 1
+}
+
+# Create instances using data dictionaries
+user = User(**user_data)
+book = Book(**book_data)
+author = Author(**author_data)
+loan = Loan(**loan_data)
+
+# Output the instances to see the results
+print(user)
+print()
+print(book)
+print()
+print(author)
+print()
+print(loan)
+
+
+print()
+print()
+book1 = Book(title="A Great Book", genre="Fiction", pages=300, total_copies=5, copies_available=5)
+book2 = Book(title="Another Book", genre="Non-Fiction", pages=200, total_copies=3, copies_available=2)
+
+author = Author(pen_name="Jane Smith", email="jane.smith@example.com")
+
+# Establish relationships
+author.books.extend([book1, book2])
+
+# Output bibliography
+print(author.bibliography)
