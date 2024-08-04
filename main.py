@@ -4,12 +4,15 @@ import database,models,JWTtoken,hashing
 from sqlmodel import Session,select
 from datetime import date,timedelta
 import OAuth2
-from routers import user_route
+from routers import user_route, book_route, author_route
 app = FastAPI()
 
 database.init_db()
 
 app.include_router(user_route.router)
+app.include_router(book_route.router)
+app.include_router(author_route.router)
+
 @app.get('/')
 def index():
     return {"Success"}
@@ -29,120 +32,6 @@ def login(request: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(
     access_token = JWTtoken.create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
     return {"access_token": access_token, "token_type": "bearer"}
 
-
-
-# BOOK
-
-@app.post("/create_book")
-def create_book(request : models.BookCreate, db : Session = Depends(database.get_db),current_email: str = Depends(OAuth2.get_current_user)):
-    check_librarian = db.exec(select(models.User).where(models.User.email==current_email)).first()
-    if check_librarian.role != 'Librarian':
-        raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION,detail=f"Access unavailable")
-
-    if request.author_pen_names is None or not request.author_pen_names:
-        author_pen_names = []
-    else:
-        author_pen_names = [pen_name for pen_name in request.author_pen_names if pen_name.strip()]
-    
-    book_data = models.Book(
-        title=request.title,
-        genre=request.genre,
-        pages=request.pages,
-        total_copies=request.total_copies,
-        copies_available=request.total_copies,
-        next_available_on=date.today()
-    )
-
-    db.add(book_data)
-    db.commit()
-    db.refresh(book_data)
-
-    if author_pen_names:
-        results = db.exec(select(models.Author).where(models.Author.pen_name.in_(author_pen_names))).fetchall()
-
-        found_pen_names = {author.pen_name for author in results}
-        requested_pen_names = set(author_pen_names)
-
-        if not requested_pen_names.issubset(found_pen_names):
-            missing_pen_names = requested_pen_names - found_pen_names
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Authors with pen names {','.join(missing_pen_names)} not found.")
-        #Associate book with authors
-
-        for pen_name in request.author_pen_names:
-            author = db.exec(select(models.Author).where(models.Author.pen_name==pen_name)).first()
-            association = models.BookAuthorAssociation(book_id=book_data.id,author_id=author.id)
-            db.add(association)
-        
-        db.commit()
-
-    return book_data
-
-
-@app.delete('/delete_book/{id}')
-def delete_book(id:int,db:Session=Depends(database.get_db),user:str=Depends(OAuth2.get_current_user)):
-    user_details = db.exec(select(models.User).where(models.User.email==user)).first()
-    if user_details.role != 'Librarian':
-        raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION,detail=f"Access unavailable")
-    
-    check_loans = db.exec(select(models.Loan).where(models.Loan.borrowed_book_id==id,models.Loan.returned==False)).all()
-    if check_loans:
-        return {f"Please clear the loans on Book id {id} first."}
-    book = db.exec(select(models.Book).where(models.Book.id)==id).first()
-    book.delete(synchronize_session= False)
-    db.commit()
-    return {f"Book deleted."}
-
-
-
-# AUTHOR
-
-
-@app.post('/create_author')
-def create_author(request : models.AuthorCreate, db : Session = Depends(database.get_db),current_email: str = Depends(OAuth2.get_current_user)):
-    
-    check_librarian = db.exec(select(models.User).where(models.User.email==current_email)).first()
-    if check_librarian.role != 'Librarian':
-        raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION,detail=f"Access unavailable")
-    
-    if request.author_books is None or not request.author_books:
-        author_books = []
-    else:
-        author_books = [title for title in request.author_books if title.strip()]
-
-    check_email = db.exec(select(models.User).where(models.User.email == request.email)).first()
-    if check_email:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT,detail=f"Email {request.email} already exists.")
-
-    author_data = models.Author(
-        pen_name=request.pen_name,
-        email=request.email
-    )
-
-    db.add(author_data)
-    db.commit()
-    db.refresh(author_data)
-
-    if author_books:
-        books = db.exec(select(models.Book).where(models.Book.title.in_(request.author_books))).fetchall()
-        found_titles = {book.title for book in books}
-        requested_titles = set(request.author_books)
-
-        if not requested_titles.issubset(found_titles):
-            missing_titles = requested_titles - found_titles
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"Book titles {','.join(missing_titles)} not found")
-        
-        
-        #Associate author with book
-        for title in request.author_books:
-            book = db.exec(select(models.Book).where(models.Book.title==title)).first()
-            association = models.BookAuthorAssociation(book_id=book.id,author_id=author_data.id)
-            db.add(association)
-        
-        db.commit()
-
-    return author_data
-
-
 # LOAN
 
 @app.post('/create_loan')
@@ -152,13 +41,6 @@ def create_loan(rent_title : str, db : Session = Depends(database.get_db),curren
     
     if check_librarian.role != 'Member':
         raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION,detail=f"Access unavailable")
-    # > In this user would enter book title
-    # > if its available then loan is approved with loan id and the copies on rent is increased by 1 and available is reduced by 1 
-    # > else user gets next available date as response
-    # User can only be Member
-
-    # Also check if the user has already loaned the same book or not if yes then check if it was returned or not.
-
     check_book = db.exec(select(models.Book).where(models.Book.title == rent_title)).first()
     if not check_book:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"Book {rent_title} not found.")
@@ -166,6 +48,10 @@ def create_loan(rent_title : str, db : Session = Depends(database.get_db),curren
         user_id = check_librarian.id
         book_id = check_book.id
         
+        check_loan = db.exec(select(models.Loan).where(models.Loan.borrower_id==user_id,models.Loan.borrowed_book_id==book_id,models.Loan.returned==False)).first()
+        if check_loan:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail=f"You have already loaned this book.")
+
         check_book.copies_available = check_book.copies_available - 1
         check_book.copies_on_rent = check_book.copies_on_rent + 1
 
@@ -181,17 +67,15 @@ def create_loan(rent_title : str, db : Session = Depends(database.get_db),curren
     
     if check_book.copies_available == 0:
         book_id = check_book.id
-        next_date = db.exec(select(models.Books).where(models.Book.id == book_id))
+        next_available_loan = db.exec(select(models.Loan).where(models.Loan.borrowed_book_id == book_id, models.Loan.returned == False).order_by(models.Loan.due_date)).first()
+        if next_available_loan:
+            next_available_date = next_available_loan.due_date
+            return {"message": f"No copies available. Next available date: {next_available_date}"}
+        return {"Currently there are no copies of this book available with the library."}
 
-# Delete User -> Checks if there is any on going loan or not 
-# -> If not delete and force end authorisation token 
-# -> Else prompt to clear loans 
 
-# Get user info 
-# -> Returns User Fullname , email and list of current loans
 
-# Get all loans -> Returns all user loans both (closed or open)
-
+ 
 
 # Delete loan api 
 # -> to be used when user created loan by mistake but will be approved by lirarian 

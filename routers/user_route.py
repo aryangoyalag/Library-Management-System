@@ -36,6 +36,9 @@ def create_user(first_name : str,last_name : str,email :str,password : str,role:
 
     return {"Message" : "User created successfully." }
 
+
+# Get user info 
+# -> Returns User Fullname , email and list of all loans
 @router.get('')
 def get_user_details(db : Session = Depends(database.get_db), current_email : str = Depends(OAuth2.get_current_user)):
     user_details = db.exec(select(models.User).where(models.User.email == current_email)).first()
@@ -99,3 +102,6 @@ def delete_user(password : str,db:Session=Depends(database.get_db),user_email:st
     db.commit()
     # Blacklist current auth token
     return "User deleted."
+# Delete User -> Checks if there is any on going loan or not 
+# -> If not delete and force end authorisation token 
+# -> Else prompt to clear loans 
