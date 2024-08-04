@@ -3,6 +3,11 @@ from typing import Optional, List
 from sqlmodel import SQLModel, Field, Relationship
 from pydantic import BaseModel,EmailStr
 
+
+# Create a buffer table where book : author or author : book will be added , 
+# to make sure if an author or book is added later , then we can merge old books by them
+
+
 class BookAuthorAssociation(SQLModel, table=True):
     book_id: int = Field(foreign_key='book.id', primary_key=True)
     author_id: int = Field(foreign_key='author.id', primary_key=True)
@@ -15,6 +20,35 @@ class User(SQLModel, table=True):
     password: str = Field(nullable=False)
     role: str = Field(default='Member', nullable=False)
     loans: List["Loan"] = Relationship(back_populates='borrower')
+
+
+class LoanDetails(BaseModel):
+    loan_id: int
+    book_title: str
+    borrow_date: date
+    return_date: date
+    loan_amount: int
+    fine_amount: int
+    returned_status : bool
+    overdue_status : bool
+
+class UserDetails(BaseModel):
+    first_name: str
+    last_name: str
+    email: EmailStr
+    loans: List[LoanDetails]
+
+    class Config:
+        orm_mode = True
+# class UserDetails(BaseModel):
+#     first_name : str
+#     last_name : str
+#     email : EmailStr
+#     role : str
+#     loans = List[str]
+
+#     class Config:
+#         orm_mode = True
 
 class Book(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -83,10 +117,6 @@ class Loan(SQLModel, table=True):
         self.returned = True
         self.check_overdue()
 
-class LoanCreate(BaseModel):
-    borrower_id: int
-    borrowed_book_: str
-
 class Login(BaseModel):
     email: str
     password: str
@@ -97,3 +127,4 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+    

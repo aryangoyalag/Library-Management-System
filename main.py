@@ -14,6 +14,8 @@ database.init_db()
 def index():
     return {"Success"}
 
+# LOGIN
+
 @app.post('/login')
 def login(request: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(database.get_db)):
     user = db.exec(select(models.User).where(models.User.email == request.username)).first()
@@ -27,7 +29,9 @@ def login(request: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(
     access_token = JWTtoken.create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
     return {"access_token": access_token, "token_type": "bearer"}
 
-@app.post("/create_user")
+# USER
+
+@app.post("/User/create_user")
 def create_user(first_name : str,last_name : str,email :str,password : str,role:str = 'Member', db : Session = Depends(database.get_db) ):
 
     check_email = db.exec(select(models.User).where(models.User.email == email)).first()
@@ -46,6 +50,42 @@ def create_user(first_name : str,last_name : str,email :str,password : str,role:
     db.refresh(data)
 
     return {"Message" : "User created successfully." }
+
+@app.get('/User')
+def get_user_details(db : Session = Depends(database.get_db), current_email : str = Depends(OAuth2.get_current_user)):
+    user_details = db.exec(select(models.User).where(models.User.email == current_email)).first()
+    loan_details_query = (
+        select(models.Loan, models.Book)
+        .join(models.Book, models.Loan.borrowed_book_id == models.Book.id)
+        .where(models.Loan.borrower_id == user_details.id)
+    )
+    loan_details = db.exec(loan_details_query).all()
+
+    loans = [
+        models.LoanDetails(
+            loan_id=loan.id,
+            book_title=book.title,
+            borrow_date=loan.issue_date,
+            return_date=loan.due_date,
+            loan_amount=loan.loan_amount,
+            fine_amount=loan.fine,
+            returned_status=loan.returned,
+            overdue_status=loan.overdue
+        )
+        for loan, book in loan_details
+    ]
+
+    user_response = models.UserDetails(
+        first_name=user_details.first_name,
+        last_name=user_details.last_name,
+        email=user_details.email,
+        loans=loans
+    )
+
+    return user_response
+
+
+# BOOK
 
 @app.post("/create_book")
 def create_book(request : models.BookCreate, db : Session = Depends(database.get_db),current_email: str = Depends(OAuth2.get_current_user)):
@@ -90,6 +130,9 @@ def create_book(request : models.BookCreate, db : Session = Depends(database.get
         db.commit()
 
     return book_data
+
+
+# AUTHOR
 
 
 @app.post('/create_author')
@@ -137,6 +180,66 @@ def create_author(request : models.AuthorCreate, db : Session = Depends(database
 
     return author_data
 
+
+# LOAN
+
 @app.post('/create_loan')
-def create_loan(request : models.LoanCreate, db : Session = Depends(database.get_db),current_email: str = Depends(OAuth2.get_current_user)):
-    pass
+def create_loan(rent_title : str, db : Session = Depends(database.get_db),current_email: str = Depends(OAuth2.get_current_user)):
+
+    check_librarian = db.exec(select(models.User).where(models.User.email==current_email)).first()
+    
+    if check_librarian.role != 'Member':
+        raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION,detail=f"Access unavailable")
+    # > In this user would enter book title
+    # > if its available then loan is approved with loan id and the copies on rent is increased by 1 and available is reduced by 1 
+    # > else user gets next available date as response
+    # User can only be Member
+
+    # Also check if the user has already loaned the same book or not if yes then check if it was returned or not.
+
+    check_book = db.exec(select(models.Book).where(models.Book.title == rent_title)).first()
+    if not check_book:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"Book {rent_title} not found.")
+    if check_book.copies_available > 0:
+        user_id = check_librarian.id
+        book_id = check_book.id
+        
+        check_book.copies_available = check_book.copies_available - 1
+        check_book.copies_on_rent = check_book.copies_on_rent + 1
+
+        loan_data = models.Loan(
+            borrower_id=user_id,
+            borrowed_book_id=book_id
+        )
+        db.add(loan_data)
+        db.commit()
+        db.refresh(loan_data)
+
+        return f"Loan created id : {loan_data.id} "
+    
+    if check_book.copies_available == 0:
+        book_id = check_book.id
+        next_date = db.exec(select(models.Books).where(models.Book.id == book_id))
+
+# Delete User -> Checks if there is any on going loan or not 
+# -> If not delete and force end authorisation token 
+# -> Else prompt to clear loans 
+
+# Get user info 
+# -> Returns User Fullname , email and list of current loans
+
+# Get all loans -> Returns all user loans both (closed or open)
+
+
+# Delete loan api 
+# -> to be used when user created loan by mistake but will be approved by lirarian 
+# Librarian gets notified when user requests loan cancelation which is then approved by Librarian
+
+# Book return api
+# When user returns the book they notify librarian which he then approves
+
+# User notification
+# User gets notfication about upcoming return date for their loan 3 days prior
+
+#Check overdue call
+# Create API that checks the current date with return date and updates fine
