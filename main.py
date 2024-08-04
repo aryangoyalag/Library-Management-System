@@ -84,6 +84,25 @@ def get_user_details(db : Session = Depends(database.get_db), current_email : st
 
     return user_response
 
+@app.put('/User/update_user')
+def update_user_details(password: str,first_name : str = None, last_name : str = None, new_password : str = None, db : Session=Depends(database.get_db),user_email:str = Depends(OAuth2.get_current_user) ):
+    user = db.exec(select(models.User).where(models.User.email == user_email)).first()
+    force_logout = False
+    if not hashing.Hash.verify(user.password, password):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incorrect Password.")
+    if first_name:
+        user.first_name = first_name
+    if last_name:
+        user.last_name = last_name
+    if new_password:
+        user.password = hashing.Hash.bcrypt(new_password)
+        force_logout = True
+    
+    db.commit()
+    return {"User details updated."}
+
+
+
 
 # BOOK
 

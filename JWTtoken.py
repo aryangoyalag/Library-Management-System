@@ -23,12 +23,9 @@ def verify_token(token: str, credentials_exception):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
-        logging.info(f"Payload extracted from token: {payload}")
         if email is None:
-            logging.warning("Email is None in token payload")
             raise credentials_exception
-        token_data = TokenData(email=email)  # Ensure TokenData has an email field
-        return token_data
-    except JWTError as e:
-        logging.error(f"JWT error: {e}")
+        
+        return TokenData(email=email)
+    except jwt.PyJWTError:
         raise credentials_exception
