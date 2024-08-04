@@ -4,12 +4,12 @@ import database,models,JWTtoken,hashing
 from sqlmodel import Session,select
 from datetime import date,timedelta
 import OAuth2
-
+from routers import user_route
 app = FastAPI()
 
 database.init_db()
 
-
+app.include_router(user_route.router)
 @app.get('/')
 def index():
     return {"Success"}
@@ -28,79 +28,6 @@ def login(request: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(
     access_token_expires = timedelta(minutes=JWTtoken.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = JWTtoken.create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
     return {"access_token": access_token, "token_type": "bearer"}
-
-# USER
-
-@app.post("/User/create_user")
-def create_user(first_name : str,last_name : str,email :str,password : str,role:str = 'Member', db : Session = Depends(database.get_db) ):
-
-    check_email = db.exec(select(models.User).where(models.User.email == email)).first()
-    if check_email:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT,detail=f"Email {email} already exists.")
-    
-    data = models.User(
-        first_name=first_name,
-        last_name=last_name,
-        email=email,
-        password=hashing.Hash.bcrypt(password),
-        role=role)
-
-    db.add(data)
-    db.commit()
-    db.refresh(data)
-
-    return {"Message" : "User created successfully." }
-
-@app.get('/User')
-def get_user_details(db : Session = Depends(database.get_db), current_email : str = Depends(OAuth2.get_current_user)):
-    user_details = db.exec(select(models.User).where(models.User.email == current_email)).first()
-    loan_details_query = (
-        select(models.Loan, models.Book)
-        .join(models.Book, models.Loan.borrowed_book_id == models.Book.id)
-        .where(models.Loan.borrower_id == user_details.id)
-    )
-    loan_details = db.exec(loan_details_query).all()
-
-    loans = [
-        models.LoanDetails(
-            loan_id=loan.id,
-            book_title=book.title,
-            borrow_date=loan.issue_date,
-            return_date=loan.due_date,
-            loan_amount=loan.loan_amount,
-            fine_amount=loan.fine,
-            returned_status=loan.returned,
-            overdue_status=loan.overdue
-        )
-        for loan, book in loan_details
-    ]
-
-    user_response = models.UserDetails(
-        first_name=user_details.first_name,
-        last_name=user_details.last_name,
-        email=user_details.email,
-        loans=loans
-    )
-
-    return user_response
-
-@app.put('/User/update_user')
-def update_user_details(password: str,first_name : str = None, last_name : str = None, new_password : str = None, db : Session=Depends(database.get_db),user_email:str = Depends(OAuth2.get_current_user) ):
-    user = db.exec(select(models.User).where(models.User.email == user_email)).first()
-    force_logout = False
-    if not hashing.Hash.verify(user.password, password):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incorrect Password.")
-    if first_name:
-        user.first_name = first_name
-    if last_name:
-        user.last_name = last_name
-    if new_password:
-        user.password = hashing.Hash.bcrypt(new_password)
-        force_logout = True
-    
-    db.commit()
-    return {"User details updated."}
-
 
 
 
@@ -149,6 +76,22 @@ def create_book(request : models.BookCreate, db : Session = Depends(database.get
         db.commit()
 
     return book_data
+
+
+@app.delete('/delete_book/{id}')
+def delete_book(id:int,db:Session=Depends(database.get_db),user:str=Depends(OAuth2.get_current_user)):
+    user_details = db.exec(select(models.User).where(models.User.email==user)).first()
+    if user_details.role != 'Librarian':
+        raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION,detail=f"Access unavailable")
+    
+    check_loans = db.exec(select(models.Loan).where(models.Loan.borrowed_book_id==id,models.Loan.returned==False)).all()
+    if check_loans:
+        return {f"Please clear the loans on Book id {id} first."}
+    book = db.exec(select(models.Book).where(models.Book.id)==id).first()
+    book.delete(synchronize_session= False)
+    db.commit()
+    return {f"Book deleted."}
+
 
 
 # AUTHOR
