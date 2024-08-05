@@ -1,13 +1,8 @@
-from sqlmodel import create_engine, SQLModel, Session
 import os
-from dotenv import load_dotenv
+from sqlmodel import create_engine, SQLModel,Session
 
-load_dotenv()
-
-# Get the database URL from the environment variable
-SQLALCHEMY_DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:secret@db:5432/library")
-
-engine = create_engine(SQLALCHEMY_DB_URL)
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://myuser:mypassword@localhost:5432/mydatabase")
+engine = create_engine(DATABASE_URL)
 
 # Create the database tables
 def init_db():
