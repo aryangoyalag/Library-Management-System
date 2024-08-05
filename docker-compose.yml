@@ -22,8 +22,7 @@ services:
       - "8000:8000"
     depends_on:
       - postgres
-    environment:
-      DATABASE_URL: postgresql+psycopg2://myuser:mypassword@postgres:5432/mydatabase
+    
 
 volumes:
   postgres_data:
