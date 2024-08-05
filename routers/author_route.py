@@ -3,12 +3,34 @@ from fastapi import  Depends, HTTPException,status
 import database,models
 from sqlmodel import Session,select
 import OAuth2
-
+from typing import List
 router = APIRouter(
     tags=['Author'],
     prefix='/Author'
 )
 
+@router.get('/search_by_pen_name', response_model=List[models.AuthorDetails])
+def search_by_pen_name(pen_name: str, db: Session = Depends(database.get_db)):
+    # Fetch authors matching the provided pen name
+    authors = db.exec(select(models.Author).where(models.Author.pen_name.ilike(f"%{pen_name}%"))).all()
+    
+    if not authors:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No authors found with the given pen name")
+    
+    # Prepare the list of author details
+    author_details_list = []
+    for author in authors:
+        # Fetch the books associated with the author
+        books = db.exec(select(models.Book).join(models.BookAuthorAssociation).where(models.BookAuthorAssociation.author_id == author.id)).all()
+        book_titles = [book.title for book in books]
+        
+        author_details_list.append(models.AuthorDetails(
+            pen_name=author.pen_name,
+            email=author.email,
+            books=book_titles
+        ))
+    
+    return author_details_list
 
 @router.post('/create_author')
 def create_author(request : models.AuthorCreate, db : Session = Depends(database.get_db),current_email: str = Depends(OAuth2.get_current_user)):

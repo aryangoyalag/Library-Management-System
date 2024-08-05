@@ -10,6 +10,28 @@ router = APIRouter(
 )
 
 
+@router.post('/librarian/check_overdue_loans')
+def check_overdue_loans(db: Session = Depends(database.get_db), current_email: str = Depends(OAuth2.get_current_user)):
+    # Ensure the current user is a librarian
+    check_librarian = db.exec(select(models.User).where(models.User.email == current_email)).first()
+    if check_librarian.role != 'Librarian':
+        raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION, detail="Access unavailable")
+
+    # Fetch all open loans (i.e., where returned = False)
+    open_loans = db.exec(select(models.Loan).where(models.Loan.returned == False)).all()
+
+    if not open_loans:
+        return {"detail": "No open loans found"}
+
+    # Update the overdue status for each loan
+    for loan in open_loans:
+        loan.check_overdue()
+
+    # Commit the changes to the database
+    db.commit()
+
+    return {"detail": "Overdue status updated for all open loans"}
+
 
 @router.post('/User/create_loan')
 def create_loan(rent_title: str, db: Session = Depends(database.get_db), current_email: str = Depends(OAuth2.get_current_user)):

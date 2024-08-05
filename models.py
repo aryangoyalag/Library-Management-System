@@ -25,6 +25,14 @@ class Author(SQLModel, table=True):
     email: str = Field(nullable=False, unique=True)
     books: List["Book"] = Relationship(back_populates='authors', link_model=BookAuthorAssociation)
 
+class AuthorDetails(BaseModel):
+    pen_name: str
+    email: EmailStr
+    books: List[str] = []
+
+    class Config:
+        orm_mode = True
+
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     first_name: str = Field(nullable=False, index=True)

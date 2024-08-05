@@ -1,6 +1,8 @@
+from datetime import timedelta
 from fastapi import APIRouter
 from fastapi import  Depends, HTTPException,status
-import database,models,hashing
+from fastapi.security import OAuth2PasswordRequestForm
+import database,models,hashing,JWTtoken
 from sqlmodel import Session,select
 
 import OAuth2
@@ -12,6 +14,7 @@ router = APIRouter(
 
 # USER
 # Find a way to block this api from authorised users
+
 @router.post("/create_user")
 def create_user(first_name : str,last_name : str,email :str,password : str,role:str = 'Member', db : Session = Depends(database.get_db) ):
 

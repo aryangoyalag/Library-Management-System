@@ -1,5 +1,5 @@
 from datetime import date
-from fastapi import APIRouter
+from fastapi import APIRouter,Query
 from fastapi import  Depends, HTTPException,status
 import database,models
 from sqlmodel import Session,select
@@ -10,6 +10,34 @@ router = APIRouter(
     tags = ['Book'],
     prefix='/book'
 )
+
+@router.get("/search_books")
+def search_books(
+    title: str = Query(None, description="Filter books by title"),
+    author: str = Query(None, description="Filter books by author"),
+    genre: str = Query(None, description="Filter books by genre"),
+    db: Session = Depends(database.get_db)
+):
+    query = select(models.Book)
+    
+    # Filter by title if provided
+    if title:
+        query = query.where(models.Book.title.ilike(f"%{title}%"))
+    
+    # Filter by genre if provided
+    if genre:
+        query = query.where(models.Book.genre.ilike(f"%{genre}%"))
+    
+    # Execute the query to get books
+    books = db.exec(query).all()
+    
+    # If an author filter is applied, further filter the results by author
+    if author:
+        # Find books with the specified author
+        author_books_query = select(models.Book).join(models.BookAuthorAssociation).join(models.Author).where(models.Author.pen_name.ilike(f"%{author}%"))
+        books = db.exec(author_books_query).all()
+
+    return books
 
 @router.post("/create_book")
 def create_book(request : models.BookCreate, db : Session = Depends(database.get_db),current_email: str = Depends(OAuth2.get_current_user)):

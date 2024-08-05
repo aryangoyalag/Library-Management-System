@@ -26,5 +26,5 @@ def verify_token(token: str, credentials_exception):
             raise credentials_exception
         
         return TokenData(email=email)
-    except jwt.PyJWTError:
+    except JWTError:
         raise credentials_exception
