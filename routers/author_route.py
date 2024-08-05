@@ -55,3 +55,42 @@ def create_author(request : models.AuthorCreate, db : Session = Depends(database
 
     return author_data
 
+@router.put('/update_author/{author_id}')
+def update_author(author_id: int, request: models.AuthorUpdate, db: Session = Depends(database.get_db), current_email: str = Depends(OAuth2.get_current_user)):
+    check_librarian = db.exec(select(models.User).where(models.User.email == current_email)).first()
+    if check_librarian.role != 'Librarian':
+        raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION, detail="Access unavailable")
+
+    author = db.exec(select(models.Author).where(models.Author.id == author_id)).first()
+    if not author:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Author with ID {author_id} not found")
+
+    # Update author details
+    if request.pen_name:
+        author.pen_name = request.pen_name
+    if request.email:
+        author.email = request.email
+
+    db.commit()
+
+    return author
+
+@router.delete('/delete_author/{author_id}')
+def delete_author(author_id: int, db: Session = Depends(database.get_db), current_email: str = Depends(OAuth2.get_current_user)):
+    check_librarian = db.exec(select(models.User).where(models.User.email == current_email)).first()
+    if check_librarian.role != 'Librarian':
+        raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION, detail="Access unavailable")
+
+    author = db.exec(select(models.Author).where(models.Author.id == author_id)).first()
+    if not author:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Author with ID {author_id} not found")
+
+    # Delete associations first to avoid foreign key constraint issues
+    associations = db.exec(select(models.BookAuthorAssociation).where(models.BookAuthorAssociation.author_id == author_id)).all()
+    for association in associations:
+        db.delete(association)
+    # Delete author
+    db.delete(author)
+    db.commit()
+
+    return {"detail": "Author deleted successfully"}

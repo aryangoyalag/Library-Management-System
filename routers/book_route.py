@@ -57,18 +57,50 @@ def create_book(request : models.BookCreate, db : Session = Depends(database.get
 
 
 @router.delete('/delete_book/{id}')
-def delete_book(id:int,db:Session=Depends(database.get_db),user:str=Depends(OAuth2.get_current_user)):
-    user_details = db.exec(select(models.User).where(models.User.email==user)).first()
+def delete_book(
+    id: int,
+    db: Session = Depends(database.get_db),
+    user: str = Depends(OAuth2.get_current_user)
+):
+    user_details = db.exec(select(models.User).where(models.User.email == user)).first()
     if user_details.role != 'Librarian':
-        raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION,detail=f"Access unavailable")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access unavailable"
+        )
     
-    check_loans = db.exec(select(models.Loan).where(models.Loan.borrowed_book_id==id,models.Loan.returned==False)).all()
+    # Check if the book exists
+    book = db.exec(select(models.Book).where(models.Book.id == id)).first()
+    if not book:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Book with id {id} not found."
+        )
+    
+    # Check if there are any active loans for the book
+    check_loans = db.exec(
+        select(models.Loan).where(
+            models.Loan.borrowed_book_id == id,
+            models.Loan.returned == False
+        )
+    ).all()
+    
     if check_loans:
-        return {f"Please clear the loans on Book id {id} first."}
-    book = db.exec(select(models.Book).where(models.Book.id==id)).first()
-    book.delete(synchronize_session= False)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Please clear the loans on Book id {id} first."
+        )
+    
+    # Remove associations related to the book
+    associations = db.exec(select(models.BookAuthorAssociation).where(models.BookAuthorAssociation.book_id == id)).all()
+    for association in associations:
+        db.delete(association)
+    
+    # Delete the book
+    db.delete(book)
     db.commit()
-    return {f"Book deleted."}
+    
+    return {"message": "Book and its associations deleted successfully."}
 
 @router.put('/update_book/{id}')
 def update_book(id:int,title:str=None,pages:int=None,total_copies:int=None,db:Session=Depends(database.get_db),user:str=Depends(OAuth2.get_current_user)):

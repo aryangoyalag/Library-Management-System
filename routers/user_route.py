@@ -38,6 +38,8 @@ def create_user(first_name : str,last_name : str,email :str,password : str,role:
 @router.get('')
 def get_user_details(db : Session = Depends(database.get_db), current_email : str = Depends(OAuth2.get_current_user)):
     user_details = db.exec(select(models.User).where(models.User.email == current_email)).first()
+    if not user_details:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"user does not exit")
     loan_details_query = (
         select(models.Loan, models.Book)
         .join(models.Book, models.Loan.borrowed_book_id == models.Book.id)
@@ -70,8 +72,11 @@ def get_user_details(db : Session = Depends(database.get_db), current_email : st
 
 @router.put('/update_user')
 def update_user_details(password: str,first_name : str = None, last_name : str = None, new_password : str = None, db : Session=Depends(database.get_db),user_email:str = Depends(OAuth2.get_current_user) ):
+    
     user = db.exec(select(models.User).where(models.User.email == user_email)).first()
-    force_logout = False
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"user does not exit")
+    
     if not hashing.Hash.verify(user.password, password):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incorrect Password.")
     if first_name:
@@ -80,8 +85,6 @@ def update_user_details(password: str,first_name : str = None, last_name : str =
         user.last_name = last_name
     if new_password:
         user.password = hashing.Hash.bcrypt(new_password)
-        # Blacklist current auth token
-        force_logout = True
     
     db.commit()
     return {"User details updated."}
@@ -89,6 +92,8 @@ def update_user_details(password: str,first_name : str = None, last_name : str =
 @router.delete('/delete_user')
 def delete_user(password: str, db: Session = Depends(database.get_db), user_email: str = Depends(OAuth2.get_current_user)):
     user = db.exec(select(models.User).where(models.User.email == user_email)).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"user does not exit")
     if not hashing.Hash.verify(user.password, password):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incorrect Password.")
     
