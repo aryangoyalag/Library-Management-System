@@ -8,7 +8,7 @@ load_dotenv()
 SQLALCHEMY_DB_URL = os.getenv("DATABASE_URL")
 
 # Create the SQLModel engine
-engine = create_engine(SQLALCHEMY_DB_URL, connect_args={"check_same_thread": False})
+engine = create_engine(SQLALCHEMY_DB_URL)
 
 # Initialize the database
 def init_db():
