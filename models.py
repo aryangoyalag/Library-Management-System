@@ -40,15 +40,7 @@ class UserDetails(BaseModel):
 
     class Config:
         orm_mode = True
-# class UserDetails(BaseModel):
-#     first_name : str
-#     last_name : str
-#     email : EmailStr
-#     role : str
-#     loans = List[str]
 
-#     class Config:
-#         orm_mode = True
 
 class Book(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -95,6 +87,12 @@ class Loan(SQLModel, table=True):
     overdue: bool = Field(default=False)
     loan_amount: int = Field(default=50, nullable=False)
     fine: int = Field(default=0)
+    loan_requested : Optional[bool] = Field(default=False)
+    loan_approved : Optional[bool] = Field(default=False)
+    return_requested: Optional[bool] = Field(default=False)
+    return_accepted : Optional[bool] = Field(default=False)
+    cancel_requested : Optional[bool] = Field(default=False)
+    cancel_accepted : Optional[bool] = Field(default=False)
 
     borrower: User = Relationship(back_populates='loans')
     borrowed_book: Book = Relationship(back_populates='loans')
@@ -116,6 +114,22 @@ class Loan(SQLModel, table=True):
     def return_book(self):
         self.returned = True
         self.check_overdue()
+
+class LoanApprovalRequest(BaseModel):
+    loan_id: int
+
+class LoanCancellationRequest(BaseModel):
+    loan_id: int
+
+class LoanReturnRequest(BaseModel):
+    loan_id: int
+
+class Notification(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int
+    message: str
+    is_read: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Login(BaseModel):
     email: str
