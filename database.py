@@ -1,7 +1,7 @@
 
 from sqlmodel import create_engine, SQLModel,Session
 
-DATABASE_URL = "postgresql+psycopg2://myuser:mypassword@my_postgres:5432/mydatabase"
+DATABASE_URL = "postgresql+psycopg2://myuser:mypassword@postgres:5432/mydatabase"
 engine = create_engine(DATABASE_URL)
 
 # Create the database tables
