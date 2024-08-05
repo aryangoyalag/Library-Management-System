@@ -19,7 +19,7 @@ class User(SQLModel, table=True):
     email: str = Field(nullable=False, unique=True)
     password: str = Field(nullable=False)
     role: str = Field(default='Member', nullable=False)
-    loans: List["Loan"] = Relationship(back_populates='borrower')
+    loans: List["Loan"] = Relationship(back_populates='borrower',sa_relationship_kwargs={"cascade": "all, delete-orphan"})
 
 
 class LoanDetails(BaseModel):
@@ -98,7 +98,8 @@ class Loan(SQLModel, table=True):
     borrowed_book: Book = Relationship(back_populates='loans')
 
     def __init__(self, borrower_id: int, borrowed_book_id: int):
-        super().__init__(borrower_id=borrower_id, borrowed_book_id=borrowed_book_id)
+        self.borrower_id=borrower_id
+        self.borrowed_book_id=borrowed_book_id
         self.issue_date = date.today()
         self.due_date = self.issue_date + timedelta(days=15)
 

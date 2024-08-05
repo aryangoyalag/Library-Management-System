@@ -10,10 +10,6 @@ router = APIRouter(
     prefix='/User'
 )
 
-
-
-
-
 # USER
 # Find a way to block this api from authorised users
 @router.post("/create_user")
@@ -91,17 +87,18 @@ def update_user_details(password: str,first_name : str = None, last_name : str =
     return {"User details updated."}
 
 @router.delete('/delete_user')
-def delete_user(password : str,db:Session=Depends(database.get_db),user_email:str = Depends(OAuth2.get_current_user)):
+def delete_user(password: str, db: Session = Depends(database.get_db), user_email: str = Depends(OAuth2.get_current_user)):
     user = db.exec(select(models.User).where(models.User.email == user_email)).first()
     if not hashing.Hash.verify(user.password, password):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incorrect Password.")
-    loans = db.exec(select(models.Loan).where(models.Loan.borrower_id==user.id, models.Loan.returned==False)).all()
-    if loans:
-        return {"Please clear your due loans first."}
-    user.delete(synchronize_session=False)
+    
+    # Find all loans for the user that have not been returned
+    ongoing_loans = db.exec(select(models.Loan).where(models.Loan.borrower_id == user.id)).all()
+    for ongoing_loan in ongoing_loans:
+        if not ongoing_loan.returned:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail=f"Clear your loans first.")
+    
+    # Proceed with deletion if no ongoing loans
+    db.delete(user)
     db.commit()
-    # Blacklist current auth token
-    return "User deleted."
-# Delete User -> Checks if there is any on going loan or not 
-# -> If not delete and force end authorisation token 
-# -> Else prompt to clear loans 
+    return {"message": "User deleted successfully."}
