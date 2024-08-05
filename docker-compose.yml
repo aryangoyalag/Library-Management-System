@@ -5,7 +5,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:secret@db:5432/library
+      - DATABASE_URL=postgresql://postgres:secret@host.docker.internal:5432/library
     depends_on:
       - db
 
