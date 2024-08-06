@@ -1,5 +1,55 @@
 # Library-Management-System
 
+## Library Management System Setup Guide
+
+This guide will help you clone the Library Management System repository to your local machine, set up a virtual environment, and install the required dependencies.
+
+#### Step 1: Clone the Repository
+
+First, you need to clone the repository from GitHub to your local machine. Open your terminal and run the following command:
+
+```bash
+git clone https://github.com/aryangoyalag/Library-Management-System.git
+```
+#### Step 2: Navigate to the Project Directory
+
+Change your current directory to the project directory:
+
+```bash
+cd Library-Management-System
+
+```
+#### Step 3: Set Up a Virtual Environment
+
+Create a virtual environment to isolate your project's dependencies:
+
+- On macOS and Linux:
+```bash
+python3 -m venv venv
+```
+- On Windows
+```bash
+python -m venv venv
+```
+#### Step 4: Activate the Virtual Environment
+
+Activate the virtual environment you just created:
+
+- On macOS and Linus:
+```bash
+source venv/bin/activate
+```
+- On Windows
+```bash
+.\venv\Scripts\activate
+```
+
+#### Step 5: Install the Dependencies
+
+Install the required dependencies using the requirements.txt file:
+```bash
+pip install -r requirements.txt
+```
 ## FastAPI Documentation
 
 ### Endpoints
