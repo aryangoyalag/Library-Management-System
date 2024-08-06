@@ -1,9 +1,9 @@
 from datetime import timedelta
-from fastapi import APIRouter
+from fastapi import APIRouter,Query
 from fastapi import  Depends, HTTPException,status
 from fastapi.security import OAuth2PasswordRequestForm
 import database,models,hashing,JWTtoken
-from sqlmodel import Session,select
+from sqlmodel import Session,select,desc
 
 import OAuth2
 
@@ -39,14 +39,24 @@ def create_user(first_name : str,last_name : str,email :str,password : str,role:
 # Get user info 
 # -> Returns User Fullname , email and list of all loans
 @router.get('')
-def get_user_details(db : Session = Depends(database.get_db), current_email : str = Depends(OAuth2.get_current_user)):
+def get_user_details(
+    db: Session = Depends(database.get_db),
+    current_email: str = Depends(OAuth2.get_current_user),
+    skip: int = Query(0, ge=0, description="Number of loans to skip"),
+    limit: int = Query(10, le=100, description="Maximum number of loans to return")
+):
     user_details = db.exec(select(models.User).where(models.User.email == current_email)).first()
+    
     if not user_details:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"user does not exit")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User does not exist")
+    
     loan_details_query = (
         select(models.Loan, models.Book)
         .join(models.Book, models.Loan.borrowed_book_id == models.Book.id)
         .where(models.Loan.borrower_id == user_details.id)
+        .order_by(desc(models.Loan.issue_date))  # Optionally, order by issue_date in descending order
+        .offset(skip)
+        .limit(limit)
     )
     loan_details = db.exec(loan_details_query).all()
 
@@ -72,7 +82,6 @@ def get_user_details(db : Session = Depends(database.get_db), current_email : st
     )
 
     return user_response
-
 @router.put('/update_user')
 def update_user_details(password: str,first_name : str = None, last_name : str = None, new_password : str = None, db : Session=Depends(database.get_db),user_email:str = Depends(OAuth2.get_current_user) ):
     

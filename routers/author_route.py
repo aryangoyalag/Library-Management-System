@@ -1,7 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter,Query
 from fastapi import  Depends, HTTPException,status
 import database,models
-from sqlmodel import Session,select
+from sqlmodel import Session,select,desc
 import OAuth2
 from typing import List
 router = APIRouter(
@@ -10,9 +10,18 @@ router = APIRouter(
 )
 
 @router.get('/search_by_pen_name', response_model=List[models.AuthorDetails])
-def search_by_pen_name(pen_name: str, db: Session = Depends(database.get_db)):
-    # Fetch authors matching the provided pen name
-    authors = db.exec(select(models.Author).where(models.Author.pen_name.ilike(f"%{pen_name}%"))).all()
+def search_by_pen_name(
+    pen_name: str,
+    db: Session = Depends(database.get_db),
+    skip: int = Query(0, ge=0, description="Number of authors to skip"),
+    limit: int = Query(10, le=100, description="Maximum number of authors to return")
+):
+    # Fetch authors matching the provided pen name with pagination
+    statement = (select(models.Author)
+                 .where(models.Author.pen_name.ilike(f"%{pen_name}%"))
+                 .offset(skip)
+                 .limit(limit))
+    authors = db.exec(statement).all()
     
     if not authors:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No authors found with the given pen name")
@@ -21,7 +30,9 @@ def search_by_pen_name(pen_name: str, db: Session = Depends(database.get_db)):
     author_details_list = []
     for author in authors:
         # Fetch the books associated with the author
-        books = db.exec(select(models.Book).join(models.BookAuthorAssociation).where(models.BookAuthorAssociation.author_id == author.id)).all()
+        books = db.exec(select(models.Book)
+                        .join(models.BookAuthorAssociation)
+                        .where(models.BookAuthorAssociation.author_id == author.id)).all()
         book_titles = [book.title for book in books]
         
         author_details_list.append(models.AuthorDetails(
