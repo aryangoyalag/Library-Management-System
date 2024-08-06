@@ -11,44 +11,50 @@ router = APIRouter(
 
 
 @router.post('/librarian/check_overdue_loans')
-def check_overdue_loans(db: Session = Depends(database.get_db), current_email: str = Depends(OAuth2.get_current_user)):
-    # Ensure the current user is a librarian
+def check_overdue_loans(db: Session = Depends(database.get_db), 
+                        current_email: str = Depends(OAuth2.get_current_user)):
+    
     check_librarian = db.exec(select(models.User).where(models.User.email == current_email)).first()
+
     if check_librarian.role != 'Librarian':
         raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION, detail="Access unavailable")
 
-    # Fetch all open loans (i.e., where returned = False)
     open_loans = db.exec(select(models.Loan).where(models.Loan.returned == False)).all()
 
     if not open_loans:
         return {"detail": "No open loans found"}
 
-    # Update the overdue status for each loan
     for loan in open_loans:
         loan.check_overdue()
 
-    # Commit the changes to the database
     db.commit()
 
     return {"detail": "Overdue status updated for all open loans"}
 
 
 @router.post('/User/create_loan')
-def create_loan(rent_title: str, db: Session = Depends(database.get_db), current_email: str = Depends(OAuth2.get_current_user)):
+def create_loan(rent_title: str, 
+                db: Session = Depends(database.get_db), 
+                current_email: str = Depends(OAuth2.get_current_user)):
+    
     check_librarian = db.exec(select(models.User).where(models.User.email == current_email)).first()
     
     if check_librarian.role != 'Member':
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access unavailable")
     
     check_book = db.exec(select(models.Book).where(models.Book.title == rent_title)).first()
+
     if not check_book:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Book '{rent_title}' not found.")
     
     if check_book.copies_available > 0:
+
         user_id = check_librarian.id
         book_id = check_book.id
         
-        check_loan = db.exec(select(models.Loan).where(models.Loan.borrower_id == user_id, models.Loan.borrowed_book_id == book_id, models.Loan.returned == False)).first()
+        check_loan = db.exec(select(models.Loan).where(models.Loan.borrower_id == user_id,
+                                                        models.Loan.borrowed_book_id == book_id
+                                                        , models.Loan.returned == False)).first()
         if check_loan:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You have already loaned this book.")
 
@@ -56,55 +62,84 @@ def create_loan(rent_title: str, db: Session = Depends(database.get_db), current
             borrower_id=user_id,
             borrowed_book_id=book_id
         )
+
         db.add(loan_data)
         db.commit()
         db.refresh(loan_data)
+
         loan_data.loan_requested = True
+
         notification = models.Notification(
             user_id=user_id,
             message=f"Loan Requested: Loan ID {loan_data.id} for Book '{rent_title}'. Waiting for librarian to approve.",
             is_read=False
         )
+
         db.add(notification)
-        # Notify all librarians
+        
         librarians = db.exec(select(models.User).where(models.User.role == 'Librarian')).all()
+
         for librarian in librarians:
             notification = models.Notification(
             user_id=librarian.id,
             message=f"Approval request for loan ID {loan_data.id} has been made by {check_librarian.id}. Please review.",
             is_read=False
         )
+            
         db.add(notification)
+
         db.commit()
 
         return {"message": f"Loan request created with ID: {loan_data.id}"}
     
     if check_book.copies_available == 0:
+
         book_id = check_book.id
-        next_available_loan = db.exec(select(models.Loan).where(models.Loan.borrowed_book_id == book_id, models.Loan.returned == False).order_by(models.Loan.due_date)).first()
+
+        statement = (select(models.Loan)
+              .where(models.Loan.borrowed_book_id == book_id, models.Loan.returned == False)
+              .order_by(models.Loan.due_date))
+        
+        next_available_loan = db.exec(statement).first()
+
         if next_available_loan:
             next_available_date = next_available_loan.due_date
+            check_book.next_available_on = next_available_date
+
             return {"message": f"No copies available. Next available date: {next_available_date}"}
         return {"message": "Currently there are no copies of this book available with the library."}
 
 @router.post('/User/cancel_loan')
-def cancel_loan(loan_id: int, db: Session = Depends(database.get_db), current_user: str = Depends(OAuth2.get_current_user)):
-    loan = db.exec(select(models.Loan).where(models.Loan.id == loan_id)).first()
-    if not loan:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found.")
+def cancel_loan(loan_id: int, 
+                db: Session = Depends(database.get_db), 
+                current_user: str = Depends(OAuth2.get_current_user)):
     
     user = db.exec(select(models.User).where(models.User.email == current_user)).first()
+
     if user.role != 'Member':
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only members can request cancellations.")
 
-    # Notify all librarians
+    loan = db.exec(select(models.Loan).where(models.Loan.id == loan_id)).first()
+
+    if not loan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found.")
+    
+    if loan.loan_approved:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST , detail = " Loan has already been approved. You can't request cancellation now.")
+    
+    if loan.returned:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail= f"You have already returned the book.")
+
     notification = models.Notification(
             user_id=user.id,
-            message=f"Book return requested for Loan ID {loan_id}.",
+            message=f"Loan cancellation requested for Loan ID {loan_id}.",
             is_read=False
         )
+    
     db.add(notification)
+
     librarians = db.exec(select(models.User).where(models.User.role == 'Librarian')).all()
+
     for librarian in librarians:
         notification = models.Notification(
             user_id=librarian.id,
@@ -118,8 +153,12 @@ def cancel_loan(loan_id: int, db: Session = Depends(database.get_db), current_us
     return {"message": "Cancellation request sent to librarians."}
 
 @router.post('/User/return_book')
-def return_book(loan_id: int, db: Session = Depends(database.get_db), current_user: str = Depends(OAuth2.get_current_user)):
+def return_book(loan_id: int,
+                db: Session = Depends(database.get_db),
+                current_user: str = Depends(OAuth2.get_current_user)):
+    
     loan = db.exec(select(models.Loan).where(models.Loan.id == loan_id)).first()
+
     if not loan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found.")
     
@@ -127,6 +166,7 @@ def return_book(loan_id: int, db: Session = Depends(database.get_db), current_us
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Book has already been returned.")
     
     user = db.exec(select(models.User).where(models.User.email == current_user)).first()
+
     if user.role != 'Member':
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only members can return books.")
     
@@ -142,7 +182,9 @@ def return_book(loan_id: int, db: Session = Depends(database.get_db), current_us
             is_read=False
         )
         db.add(notification)
+
         librarians = db.exec(select(models.User).where(models.User.role == 'Librarian')).all()
+
         for librarian in librarians:
             notification = models.Notification(
             user_id=librarian.id,
@@ -158,8 +200,12 @@ def return_book(loan_id: int, db: Session = Depends(database.get_db), current_us
 
 
 @router.post('/librarian/approve_loan')
-def approve_loan(request: models.LoanApprovalRequest, db: Session = Depends(database.get_db), email: str = Depends(OAuth2.get_current_user)):
+def approve_loan(request: models.LoanApprovalRequest, 
+                 db: Session = Depends(database.get_db), 
+                 email: str = Depends(OAuth2.get_current_user)):
+
     current_user = db.exec(select(models.User).where(models.User.email==email)).first()
+
     if current_user.role != 'Librarian':
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only librarians can approve loans.")
 
@@ -169,17 +215,24 @@ def approve_loan(request: models.LoanApprovalRequest, db: Session = Depends(data
 
     if loan.loan_approved:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Loan is already approved.")
+    
     check_book = db.exec(select(models.Book).where(models.Book.id == loan.borrowed_book_id)).first()
+
     check_book.copies_available -= 1
     check_book.copies_on_rent += 1
     loan.loan_approved = True
+
+    if request.due_date:
+        loan.due_date = request.due_date
+
     db.add(loan)
     db.commit()
-
+    loan = db.exec(select(models.Loan).where(models.Loan.id == request.loan_id)).first()
     user = db.exec(select(models.User).where(models.User.id == loan.borrower_id)).first()
+
     notification = models.Notification(
         user_id=user.id,
-        message=f"Your loan request for book ID {loan.borrowed_book_id} has been approved.",
+        message=f"Your loan request for book ID {loan.borrowed_book_id} has been approved. Please make sure you return the book by {loan.due_date} to avoid fine.",
         is_read=False
     )
     db.add(notification)
@@ -188,26 +241,26 @@ def approve_loan(request: models.LoanApprovalRequest, db: Session = Depends(data
     return {"message": "Loan approved successfully."}
 
 @router.post('/librarian/cancel_loan')
-def cancel_loan(request: models.LoanCancellationRequest, db: Session = Depends(database.get_db), email: str = Depends(OAuth2.get_current_user)):
+def cancel_loan(request: models.LoanCancellationRequest,
+                db: Session = Depends(database.get_db),
+                email: str = Depends(OAuth2.get_current_user)):
+    
     current_user = db.exec(select(models.User).where(models.User.email==email)).first()
+
     if current_user.role != 'Librarian':
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only librarians can cancel loans.")
 
     loan = db.exec(select(models.Loan).where(models.Loan.id == request.loan_id)).first()
+
     if not loan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found.")
 
     if loan.cancel_accepted:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Loan is already canceled.")
-
+    
     loan.cancel_accepted = True
     loan.returned = True
-    # book = db.exec(select(models.Book).where(models.Book.id == loan.borrowed_book_id)).first()
-    # if book:
-    #     book.copies_available += 1
-    #     book.copies_on_rent -= 1
-    #     db.add(book)
-    # db.add(loan)
+    
     db.commit()
 
     user = db.exec(select(models.User).where(models.User.id == loan.borrower_id)).first()

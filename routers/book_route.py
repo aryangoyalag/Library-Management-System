@@ -19,8 +19,6 @@ def search_books(
     db: Session = Depends(database.get_db)
 ):
     query = select(models.Book)
-    
-    # Filter by title if provided
     if title:
         query = query.where(models.Book.title.ilike(f"%{title}%"))
     
@@ -40,8 +38,13 @@ def search_books(
     return books
 
 @router.post("/create_book")
-def create_book(request : models.BookCreate, db : Session = Depends(database.get_db),current_email: str = Depends(OAuth2.get_current_user)):
+def create_book(
+    request : models.BookCreate, 
+    db : Session = Depends(database.get_db),
+    current_email: str = Depends(OAuth2.get_current_user)):
+
     check_librarian = db.exec(select(models.User).where(models.User.email==current_email)).first()
+
     if check_librarian.role != 'Librarian':
         raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION,detail=f"Access unavailable")
 
@@ -72,7 +75,6 @@ def create_book(request : models.BookCreate, db : Session = Depends(database.get
         if not requested_pen_names.issubset(found_pen_names):
             missing_pen_names = requested_pen_names - found_pen_names
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Authors with pen names {','.join(missing_pen_names)} not found.")
-        #Associate book with authors
 
         for pen_name in request.author_pen_names:
             author = db.exec(select(models.Author).where(models.Author.pen_name==pen_name)).first()
@@ -91,13 +93,13 @@ def delete_book(
     user: str = Depends(OAuth2.get_current_user)
 ):
     user_details = db.exec(select(models.User).where(models.User.email == user)).first()
+
     if user_details.role != 'Librarian':
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access unavailable"
         )
     
-    # Check if the book exists
     book = db.exec(select(models.Book).where(models.Book.id == id)).first()
     if not book:
         raise HTTPException(
@@ -105,7 +107,6 @@ def delete_book(
             detail=f"Book with id {id} not found."
         )
     
-    # Check if there are any active loans for the book
     check_loans = db.exec(
         select(models.Loan).where(
             models.Loan.borrowed_book_id == id,
@@ -131,17 +132,26 @@ def delete_book(
     return {"message": "Book and its associations deleted successfully."}
 
 @router.put('/update_book/{id}')
-def update_book(id:int,title:str=None,pages:int=None,total_copies:int=None,db:Session=Depends(database.get_db),user:str=Depends(OAuth2.get_current_user)):
+def update_book(id:int,
+                title:str=None,
+                pages:int=None,
+                total_copies:int=None,
+                db:Session=Depends(database.get_db),
+                user:str=Depends(OAuth2.get_current_user)):
+    
     user_details = db.exec(select(models.User).where(models.User.email==user)).first()
+
     if user_details.role != 'Librarian':
         raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION,detail=f"Access unavailable")
+    
     book = db.exec(select(models.Book).where(models.Book.id==id)).first()
+
     if title:
         book.title = title
     if pages:
         book.pages = pages
     if total_copies:
         book.total_copies = total_copies
-    # add for author addition as well
+    
     db.commit()
     return {"Book details have been updated."}

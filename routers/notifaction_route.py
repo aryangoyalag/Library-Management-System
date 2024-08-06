@@ -13,8 +13,9 @@ def get_notifications(db: Session = Depends(database.get_db), current_user: str 
     
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
-
-    notifications = db.exec(select(models.Notification).where(models.Notification.user_id == user.id)).all()
+    
+    statement = (select(models.Notification).where(models.Notification.user_id == user.id).order_by(models.Notification.created_at))
+    notifications = db.exec(statement).all()
     return notifications
 
 @router.put('/notifications/{notification_id}/read')

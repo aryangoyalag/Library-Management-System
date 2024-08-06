@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, date
 from typing import Optional, List
 from sqlmodel import SQLModel, Field, Relationship
 from pydantic import BaseModel, EmailStr
+from enum import Enum
 
 class BookAuthorAssociation(SQLModel, table=True):
     book_id: Optional[int] = Field(foreign_key='book.id', primary_key=True, nullable=True)
@@ -12,9 +13,9 @@ class Book(SQLModel, table=True):
     title: str = Field(nullable=False, index=True)
     genre: Optional[str] = Field(nullable=True, index=True)
     pages: Optional[int] = Field(nullable=True)
-    total_copies: int = Field(nullable=False)
-    copies_available: Optional[int] = Field(nullable=True)
-    copies_on_rent: int = Field(default=0, nullable=False)
+    total_copies: int = Field(nullable=False,ge=0)
+    copies_available: Optional[int] = Field(nullable=True,ge=0)
+    copies_on_rent: int = Field(default=0, nullable=False,ge=0)
     next_available_on: Optional[date] = Field(default=None)
     authors: List["Author"] = Relationship(back_populates='books', link_model=BookAuthorAssociation)
     loans: List["Loan"] = Relationship(back_populates='borrowed_book')
@@ -32,6 +33,7 @@ class AuthorDetails(BaseModel):
 
     class Config:
         orm_mode = True
+
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -69,9 +71,9 @@ class Loan(SQLModel, table=True):
         self.due_date = self.issue_date + timedelta(days=15)
 
     def check_overdue(self):
-        if not self.returned and date.today() > self.due_date.date():
+        if not self.returned and date.today() > self.due_date:
             self.overdue = True
-            days_overdue = (date.today() - self.due_date.date()).days
+            days_overdue = (date.today() - self.due_date).days
             self.fine = days_overdue * 10
         else:
             self.overdue = False
@@ -118,6 +120,7 @@ class AuthorUpdate(BaseModel):
     
 class LoanApprovalRequest(BaseModel):
     loan_id: int
+    due_date: Optional[date] = None
 
 class LoanCancellationRequest(BaseModel):
     loan_id: int
