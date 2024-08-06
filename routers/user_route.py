@@ -21,19 +21,36 @@ def create_user(first_name : str,last_name : str,email :str,password : str,role:
     check_email = db.exec(select(models.User).where(models.User.email == email)).first()
     if check_email:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,detail=f"Email {email} already exists.")
-    
-    data = models.User(
+    if role == 'Member':
+        data = models.User(
         first_name=first_name,
         last_name=last_name,
         email=email,
         password=hashing.Hash.bcrypt(password),
         role=role)
 
-    db.add(data)
-    db.commit()
+        db.add(data)
+        db.commit()
+        db.refresh(data)
+
+        return {"Message" : "User created successfully with Member role" }
+    
+    if role != 'LibrarianKey':
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail=f'only librarian with passkey can create this user role.')
+    else:
+        data = models.User(
+    first_name=first_name,
+    last_name=last_name,
+    email=email,
+    password=hashing.Hash.bcrypt(password),
+    role='Librarian')
+        db.add(data)
+        db.commit()
     db.refresh(data)
 
-    return {"Message" : "User created successfully." }
+    return {"Message" : "User created successfully with Librarian role" }
+
+    
 
 
 # Get user info 
