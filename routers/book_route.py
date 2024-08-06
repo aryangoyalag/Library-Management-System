@@ -52,6 +52,51 @@ def search_books(
     
     return books
 
+@router.post('/create_book')
+def create_book(request: models.BookCreate, db: Session = Depends(database.get_db), current_email: str = Depends(OAuth2.get_current_user)):
+    # Check if the current user is a librarian
+    check_librarian = db.exec(select(models.User).where(models.User.email == current_email)).first()
+    if check_librarian.role != 'Librarian':
+        raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION, detail="Access unavailable")
+
+    # Check if a book with the same title already exists
+    check_title = db.exec(select(models.Book).where(models.Book.title == request.title)).first()
+    if check_title:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Book with title '{request.title}' already exists.")
+
+    # Create the new book
+    book_data = models.Book(
+        title=request.title,
+        genre=request.genre,
+        pages=request.pages,
+        total_copies=request.total_copies,
+        copies_available=request.total_copies,
+        copies_on_rent=0
+    )
+
+    db.add(book_data)
+    db.commit()
+    db.refresh(book_data)
+
+    # Associate the book with authors
+    if request.author_pen_names:
+        authors = db.exec(select(models.Author).where(models.Author.pen_name.in_(request.author_pen_names))).fetchall()
+        found_pen_names = {author.pen_name for author in authors}
+        requested_pen_names = set(request.author_pen_names)
+
+        if not requested_pen_names.issubset(found_pen_names):
+            missing_pen_names = requested_pen_names - found_pen_names
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Author pen names {', '.join(missing_pen_names)} not found")
+
+        # Associate book with found authors
+        for pen_name in request.author_pen_names:
+            author = db.exec(select(models.Author).where(models.Author.pen_name == pen_name)).first()
+            association = models.BookAuthorAssociation(book_id=book_data.id, author_id=author.id)
+            db.add(association)
+
+        db.commit()
+
+    return book_data
 
 @router.delete('/delete_book/{id}')
 def delete_book(
