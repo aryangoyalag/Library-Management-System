@@ -2,7 +2,6 @@ from datetime import datetime, timedelta, date
 from typing import Optional, List
 from sqlmodel import SQLModel, Field, Relationship
 from pydantic import BaseModel, EmailStr
-from enum import Enum
 
 class BookAuthorAssociation(SQLModel, table=True):
     book_id: Optional[int] = Field(foreign_key='book.id', primary_key=True, nullable=True)

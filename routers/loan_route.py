@@ -1,3 +1,4 @@
+from datetime import date
 from fastapi import Depends, HTTPException,status,APIRouter
 import database,models
 from sqlmodel import Session,select
@@ -213,6 +214,11 @@ def approve_loan(
     loan.loan_approved = True
 
     if request.due_date:
+        if request.due_date < loan.issue_date:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Due date cannot be before the issue date. Setting due date to 15 days ahead by default. Approve the loan id once again.")
+        if request.due_date < date.today():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Due date cannot be in the past. Setting due date to 15 days ahead by default. Approve the loan id once again.")
+        
         loan.due_date = request.due_date
 
     db.add(loan)
