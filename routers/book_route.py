@@ -52,17 +52,7 @@ def create_book(
     db: Session = Depends(database.get_db),
     token_data: models.TokenData = Depends(OAuth2.role_required(["Librarian"]))
     ):
-    # Check if the current user is a librarian
-    # check_librarian = db.exec(select(models.User).where(models.User.email == current_email)).first()
-    # if check_librarian.role != 'Librarian':
-    #     raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION, detail="Access unavailable")
-
-    # # Check if a book with the same title already exists
-    # check_title = db.exec(select(models.Book).where(models.Book.title == request.title)).first()
-    # if check_title:
-    #     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Book with title '{request.title}' already exists.")
-
-    # Create the new book
+    
     book_data = models.Book(
         title=request.title,
         genre=request.genre,
