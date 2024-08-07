@@ -11,14 +11,12 @@ router = APIRouter(
 @router.get('/notifications')
 def get_notifications(
     db: Session = Depends(database.get_db),
-    current_user: str = Depends(OAuth2.get_current_user),
+    token_data: models.TokenData = Depends(OAuth2.role_required(["Member","Librarian"])),
     skip: int = Query(0, ge=0, description="Number of notifications to skip"),
     limit: int = Query(10, le=100, description="Maximum number of notifications to return")
 ):
-    user = db.exec(select(models.User).where(models.User.email == current_user)).first()
+    user = db.exec(select(models.User).where(models.User.email == token_data.email)).first()
     
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
     
     statement = (select(models.Notification)
                  .where(models.Notification.user_id == user.id)
@@ -28,18 +26,19 @@ def get_notifications(
     notifications = db.exec(statement).all()
     
     return notifications
+
 @router.put('/notifications/{notification_id}/read')
 def mark_notification_as_read(
     notification_id: int,
     db: Session = Depends(database.get_db),
-    current_user: str = Depends(OAuth2.get_current_user)
+    token_data: models.TokenData = Depends(OAuth2.role_required(["Member","Librarian"]))
 ):
     notification = db.exec(select(models.Notification).where(models.Notification.id == notification_id)).first()
     
     if not notification:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found.")
     
-    if notification.user_id != db.exec(select(models.User).where(models.User.email == current_user)).first().id:
+    if notification.user_id != db.exec(select(models.User).where(models.User.email == token_data.email)).first().id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to update this notification.")
     
     notification.is_read = True

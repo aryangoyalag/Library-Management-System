@@ -22,23 +22,17 @@ def search_books(
 ):
     query = select(models.Book)
     
-    # Apply title filter if provided
     if title:
         query = query.where(models.Book.title.ilike(f"%{title}%"))
     
-    # Apply genre filter if provided
     if genre:
         query = query.where(models.Book.genre.ilike(f"%{genre}%"))
     
-    # Apply pagination
     query = query.offset(skip).limit(limit)
     
-    # Fetch books based on title, genre, and pagination
     books = db.exec(query).all()
-    
-    # If an author filter is applied, further filter the results by author
+
     if author:
-        # Adjust the query to include books associated with the specified author
         author_books_query = (
             select(models.Book)
             .join(models.BookAuthorAssociation)
@@ -53,16 +47,20 @@ def search_books(
     return books
 
 @router.post('/create_book')
-def create_book(request: models.BookCreate, db: Session = Depends(database.get_db), current_email: str = Depends(OAuth2.get_current_user)):
+def create_book(
+    request: models.BookCreate,
+    db: Session = Depends(database.get_db),
+    token_data: models.TokenData = Depends(OAuth2.role_required(["Librarian"]))
+    ):
     # Check if the current user is a librarian
-    check_librarian = db.exec(select(models.User).where(models.User.email == current_email)).first()
-    if check_librarian.role != 'Librarian':
-        raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION, detail="Access unavailable")
+    # check_librarian = db.exec(select(models.User).where(models.User.email == current_email)).first()
+    # if check_librarian.role != 'Librarian':
+    #     raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION, detail="Access unavailable")
 
-    # Check if a book with the same title already exists
-    check_title = db.exec(select(models.Book).where(models.Book.title == request.title)).first()
-    if check_title:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Book with title '{request.title}' already exists.")
+    # # Check if a book with the same title already exists
+    # check_title = db.exec(select(models.Book).where(models.Book.title == request.title)).first()
+    # if check_title:
+    #     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Book with title '{request.title}' already exists.")
 
     # Create the new book
     book_data = models.Book(
@@ -102,16 +100,9 @@ def create_book(request: models.BookCreate, db: Session = Depends(database.get_d
 def delete_book(
     id: int,
     db: Session = Depends(database.get_db),
-    user: str = Depends(OAuth2.get_current_user)
+    token_data: models.TokenData = Depends(OAuth2.role_required(["Librarian"]))
 ):
-    user_details = db.exec(select(models.User).where(models.User.email == user)).first()
 
-    if user_details.role != 'Librarian':
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access unavailable"
-        )
-    
     book = db.exec(select(models.Book).where(models.Book.id == id)).first()
     if not book:
         raise HTTPException(
@@ -144,17 +135,14 @@ def delete_book(
     return {"message": "Book and its associations deleted successfully."}
 
 @router.put('/update_book/{id}')
-def update_book(id:int,
-                title:str=None,
-                pages:int=None,
-                total_copies:int=None,
-                db:Session=Depends(database.get_db),
-                user:str=Depends(OAuth2.get_current_user)):
-    
-    user_details = db.exec(select(models.User).where(models.User.email==user)).first()
-
-    if user_details.role != 'Librarian':
-        raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION,detail=f"Access unavailable")
+def update_book(
+    id:int,
+    title:str=None,
+    pages:int=None,
+    total_copies:int=None,
+    db:Session=Depends(database.get_db),
+    token_data: models.TokenData = Depends(OAuth2.role_required(["Librarian"]))
+    ):
     
     book = db.exec(select(models.Book).where(models.Book.id==id)).first()
 

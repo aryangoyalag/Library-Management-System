@@ -11,13 +11,10 @@ router = APIRouter(
 
 
 @router.post('/librarian/check_overdue_loans')
-def check_overdue_loans(db: Session = Depends(database.get_db), 
-                        current_email: str = Depends(OAuth2.get_current_user)):
-    
-    check_librarian = db.exec(select(models.User).where(models.User.email == current_email)).first()
-
-    if check_librarian.role != 'Librarian':
-        raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION, detail="Access unavailable")
+def check_overdue_loans(
+    db: Session = Depends(database.get_db), 
+    token_data: models.TokenData = Depends(OAuth2.role_required(["Librarian"]))
+    ):
 
     open_loans = db.exec(select(models.Loan).where(models.Loan.returned == False)).all()
 
@@ -33,14 +30,13 @@ def check_overdue_loans(db: Session = Depends(database.get_db),
 
 
 @router.post('/User/create_loan')
-def create_loan(rent_title: str, 
-                db: Session = Depends(database.get_db), 
-                current_email: str = Depends(OAuth2.get_current_user)):
+def create_loan(
+    rent_title: str,
+    db: Session = Depends(database.get_db),
+    token_data: models.TokenData = Depends(OAuth2.role_required(["Member"]))
+    ):
     
-    check_librarian = db.exec(select(models.User).where(models.User.email == current_email)).first()
-    
-    if check_librarian.role != 'Member':
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access unavailable")
+    user = db.exec(select(models.User).where(models.User.email == token_data.email)).first()
     
     check_book = db.exec(select(models.Book).where(models.Book.title == rent_title)).first()
 
@@ -49,7 +45,7 @@ def create_loan(rent_title: str,
     
     if check_book.copies_available > 0:
 
-        user_id = check_librarian.id
+        user_id = user.id
         book_id = check_book.id
         
         check_loan = db.exec(select(models.Loan).where(models.Loan.borrower_id == user_id,
@@ -82,7 +78,7 @@ def create_loan(rent_title: str,
         for librarian in librarians:
             notification = models.Notification(
             user_id=librarian.id,
-            message=f"Approval request for loan ID {loan_data.id} has been made by {check_librarian.id}. Please review.",
+            message=f"Approval request for loan ID {loan_data.id} has been made by User ID : {user.id}. Please review.",
             is_read=False
         )
             
@@ -110,14 +106,13 @@ def create_loan(rent_title: str,
         return {"message": "Currently there are no copies of this book available with the library."}
 
 @router.post('/User/cancel_loan')
-def cancel_loan(loan_id: int, 
-                db: Session = Depends(database.get_db), 
-                current_user: str = Depends(OAuth2.get_current_user)):
+def cancel_loan(
+    loan_id: int, 
+    db: Session = Depends(database.get_db), 
+    token_data: models.TokenData = Depends(OAuth2.role_required(["Member"]))
+    ):
     
-    user = db.exec(select(models.User).where(models.User.email == current_user)).first()
-
-    if user.role != 'Member':
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only members can request cancellations.")
+    user = db.exec(select(models.User).where(models.User.email == token_data.email)).first()
 
     loan = db.exec(select(models.Loan).where(models.Loan.id == loan_id)).first()
 
@@ -143,7 +138,7 @@ def cancel_loan(loan_id: int,
     for librarian in librarians:
         notification = models.Notification(
             user_id=librarian.id,
-            message=f"Cancellation request for loan ID {loan_id} has been made by {current_user}. Please review.",
+            message=f"Cancellation request for loan ID {loan_id} has been made by User ID : {user.id}. Please review.",
             is_read=False
         )
         db.add(notification)
@@ -153,9 +148,11 @@ def cancel_loan(loan_id: int,
     return {"message": "Cancellation request sent to librarians."}
 
 @router.post('/User/return_book')
-def return_book(loan_id: int,
-                db: Session = Depends(database.get_db),
-                current_user: str = Depends(OAuth2.get_current_user)):
+def return_book(
+    loan_id: int,
+    db: Session = Depends(database.get_db),
+    token_data: models.TokenData = Depends(OAuth2.role_required(["Member"]))
+    ):
     
     loan = db.exec(select(models.Loan).where(models.Loan.id == loan_id)).first()
 
@@ -165,10 +162,7 @@ def return_book(loan_id: int,
     if loan.returned:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Book has already been returned.")
     
-    user = db.exec(select(models.User).where(models.User.email == current_user)).first()
-
-    if user.role != 'Member':
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only members can return books.")
+    user = db.exec(select(models.User).where(models.User.email == token_data.email)).first()
     
     if loan.borrower_id != user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not authorized to return this book.")
@@ -188,7 +182,7 @@ def return_book(loan_id: int,
         for librarian in librarians:
             notification = models.Notification(
             user_id=librarian.id,
-            message=f"Return request for loan ID {loan_id} has been made by {user.id}. Please review.",
+            message=f"Return request for loan ID {loan_id} has been made by User ID : {user.id}. Please review.",
             is_read=False
         )
         db.add(notification)
@@ -200,14 +194,10 @@ def return_book(loan_id: int,
 
 
 @router.post('/librarian/approve_loan')
-def approve_loan(request: models.LoanApprovalRequest, 
-                 db: Session = Depends(database.get_db), 
-                 email: str = Depends(OAuth2.get_current_user)):
-
-    current_user = db.exec(select(models.User).where(models.User.email==email)).first()
-
-    if current_user.role != 'Librarian':
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only librarians can approve loans.")
+def approve_loan(
+    request: models.LoanApprovalRequest, 
+    db: Session = Depends(database.get_db), 
+    token_data: models.TokenData = Depends(OAuth2.role_required(["Librarian"]))):
 
     loan = db.exec(select(models.Loan).where(models.Loan.id == request.loan_id)).first()
     if not loan:
@@ -228,10 +218,9 @@ def approve_loan(request: models.LoanApprovalRequest,
     db.add(loan)
     db.commit()
     loan = db.exec(select(models.Loan).where(models.Loan.id == request.loan_id)).first()
-    user = db.exec(select(models.User).where(models.User.id == loan.borrower_id)).first()
-
+    
     notification = models.Notification(
-        user_id=user.id,
+        user_id=loan.borrower_id,
         message=f"Your loan request for book ID {loan.borrowed_book_id} has been approved. Please make sure you return the book by {loan.due_date} to avoid fine.",
         is_read=False
     )
@@ -241,14 +230,11 @@ def approve_loan(request: models.LoanApprovalRequest,
     return {"message": "Loan approved successfully."}
 
 @router.post('/librarian/cancel_loan')
-def cancel_loan(request: models.LoanCancellationRequest,
-                db: Session = Depends(database.get_db),
-                email: str = Depends(OAuth2.get_current_user)):
+def cancel_loan(
+    request: models.LoanCancellationRequest,
+    db: Session = Depends(database.get_db),
+    token_data: models.TokenData = Depends(OAuth2.role_required(["Librarian"]))):
     
-    current_user = db.exec(select(models.User).where(models.User.email==email)).first()
-
-    if current_user.role != 'Librarian':
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only librarians can cancel loans.")
 
     loan = db.exec(select(models.Loan).where(models.Loan.id == request.loan_id)).first()
 
@@ -263,9 +249,8 @@ def cancel_loan(request: models.LoanCancellationRequest,
     
     db.commit()
 
-    user = db.exec(select(models.User).where(models.User.id == loan.borrower_id)).first()
     notification = models.Notification(
-        user_id=user.id,
+        user_id=loan.borrower_id,
         message=f"Your loan request for book ID {loan.borrowed_book_id} has been canceled.",
         is_read=False
     )
@@ -275,10 +260,11 @@ def cancel_loan(request: models.LoanCancellationRequest,
     return {"message": "Loan canceled successfully."}
 
 @router.post('/librarian/return_book')
-def return_book(request: models.LoanReturnRequest, db: Session = Depends(database.get_db), email: str = Depends(OAuth2.get_current_user)):
-    current_user = db.exec(select(models.User).where(models.User.email==email)).first()
-    if current_user.role != 'Librarian':
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only librarians can accept book returns.")
+def return_book(
+    request: models.LoanReturnRequest,
+    db: Session = Depends(database.get_db),
+    token_data: models.TokenData = Depends(OAuth2.role_required(["Librarian"]))
+    ):
 
     loan = db.exec(select(models.Loan).where(models.Loan.id == request.loan_id)).first()
     if not loan:
@@ -297,9 +283,8 @@ def return_book(request: models.LoanReturnRequest, db: Session = Depends(databas
     # db.add(loan)
     db.commit()
 
-    user = db.exec(select(models.User).where(models.User.id == loan.borrower_id)).first()
     notification = models.Notification(
-        user_id=user.id,
+        user_id=loan.borrower_id,
         message=f"Book ID {loan.borrowed_book_id} has been returned successfully.",
         is_read=False
     )

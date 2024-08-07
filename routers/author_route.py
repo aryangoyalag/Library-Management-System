@@ -44,11 +44,12 @@ def search_by_pen_name(
     return author_details_list
 
 @router.post('/create_author')
-def create_author(request : models.AuthorCreate, db : Session = Depends(database.get_db),current_email: str = Depends(OAuth2.get_current_user)):
+def create_author(
+    request : models.AuthorCreate,
+    db : Session = Depends(database.get_db),
+    token_data: models.TokenData = Depends(OAuth2.role_required(["Librarian"]))
+    ):
    # This api is not returning anything 
-    check_librarian = db.exec(select(models.User).where(models.User.email==current_email)).first()
-    if check_librarian.role != 'Librarian':
-        raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION,detail=f"Access unavailable")
     
     if request.author_books is None or not request.author_books:
         author_books = []
@@ -89,10 +90,11 @@ def create_author(request : models.AuthorCreate, db : Session = Depends(database
     return author_data
 
 @router.put('/update_author/{author_id}')
-def update_author(author_id: int, request: models.AuthorUpdate, db: Session = Depends(database.get_db), current_email: str = Depends(OAuth2.get_current_user)):
-    check_librarian = db.exec(select(models.User).where(models.User.email == current_email)).first()
-    if check_librarian.role != 'Librarian':
-        raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION, detail="Access unavailable")
+def update_author(
+    author_id: int, request: models.AuthorUpdate,
+    db: Session = Depends(database.get_db),
+    token_data: models.TokenData = Depends(OAuth2.role_required(["Librarian"]))
+    ):
 
     author = db.exec(select(models.Author).where(models.Author.id == author_id)).first()
     if not author:
@@ -109,11 +111,12 @@ def update_author(author_id: int, request: models.AuthorUpdate, db: Session = De
     return author
 
 @router.delete('/delete_author/{author_id}')
-def delete_author(author_id: int, db: Session = Depends(database.get_db), current_email: str = Depends(OAuth2.get_current_user)):
-    check_librarian = db.exec(select(models.User).where(models.User.email == current_email)).first()
-    if check_librarian.role != 'Librarian':
-        raise HTTPException(status_code=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION, detail="Access unavailable")
-
+def delete_author(
+    author_id: int,
+    db: Session = Depends(database.get_db),
+    token_data: models.TokenData = Depends(OAuth2.role_required(["Librarian"]))
+    ):
+    
     author = db.exec(select(models.Author).where(models.Author.id == author_id)).first()
     if not author:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Author with ID {author_id} not found")

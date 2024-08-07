@@ -6,6 +6,7 @@ from datetime import timedelta
 from routers import user_route, book_route, author_route, loan_route,notifaction_route
 from starlette_admin.contrib.sqla import Admin, ModelView
 import inspect
+from models import User
 
 app = FastAPI()
 
@@ -45,7 +46,7 @@ def index():
 
 @app.post('/login')
 def login(request: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(database.get_db)):
-    user = db.exec(select(models.User).where(models.User.email == request.username)).first()
+    user = db.exec(select(User).where(User.email == request.username)).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Invalid Credential! User with {request.username} does not exist.")
 
@@ -53,5 +54,9 @@ def login(request: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incorrect Password.")
 
     access_token_expires = timedelta(minutes=JWTtoken.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = JWTtoken.create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
+    # Include the role in the token data
+    access_token = JWTtoken.create_access_token(
+        data={"sub": user.email, "role": user.role}, 
+        expires_delta=access_token_expires
+    )
     return {"access_token": access_token, "token_type": "bearer"}

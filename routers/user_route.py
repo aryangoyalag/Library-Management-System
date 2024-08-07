@@ -55,14 +55,14 @@ def create_user(first_name : str,last_name : str,email :str,password : str,role:
 
 # Get user info 
 # -> Returns User Fullname , email and list of all loans
-@router.get('')
+@router.get('/details')
 def get_user_details(
     db: Session = Depends(database.get_db),
-    current_email: str = Depends(OAuth2.get_current_user),
+    token_data: models.TokenData = Depends(OAuth2.role_required(["Member"])),
     skip: int = Query(0, ge=0, description="Number of loans to skip"),
     limit: int = Query(10, le=100, description="Maximum number of loans to return")
 ):
-    user_details = db.exec(select(models.User).where(models.User.email == current_email)).first()
+    user_details = db.exec(select(models.User).where(models.User.email == token_data.email)).first()
     
     if not user_details:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User does not exist")
@@ -100,11 +100,17 @@ def get_user_details(
 
     return user_response
 @router.put('/update_user')
-def update_user_details(password: str,first_name : str = None, last_name : str = None, new_password : str = None, db : Session=Depends(database.get_db),user_email:str = Depends(OAuth2.get_current_user) ):
+def update_user_details(
+    password: str,
+    first_name : str = None,
+    last_name : str = None,
+    new_password : str = None,
+    db : Session=Depends(database.get_db),
+    token_data: models.TokenData = Depends(OAuth2.role_required(["Member"]))):
     
-    user = db.exec(select(models.User).where(models.User.email == user_email)).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"user does not exit")
+    user = db.exec(select(models.User).where(models.User.email == token_data.email)).first()
+    # if not user:
+    #     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"user does not exit")
     
     if not hashing.Hash.verify(user.password, password):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incorrect Password.")
@@ -119,10 +125,13 @@ def update_user_details(password: str,first_name : str = None, last_name : str =
     return {"User details updated."}
 
 @router.delete('/delete_user')
-def delete_user(password: str, db: Session = Depends(database.get_db), user_email: str = Depends(OAuth2.get_current_user)):
-    user = db.exec(select(models.User).where(models.User.email == user_email)).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"user does not exit")
+def delete_user(password: str,
+                db: Session = Depends(database.get_db),
+                token_data: models.TokenData = Depends(OAuth2.role_required(["Member"]))):
+    
+    user = db.exec(select(models.User).where(models.User.email == token_data.email)).first()
+    # if not user:
+    #     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"user does not exit")
     if not hashing.Hash.verify(user.password, password):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incorrect Password.")
     
